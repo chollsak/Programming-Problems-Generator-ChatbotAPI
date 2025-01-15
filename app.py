@@ -2,11 +2,9 @@ import openai
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 openai.api_key = os.getenv("KEY")
 
-# Function to interact with GPT
 def chat_with_gpt(prompt):
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
@@ -19,7 +17,6 @@ def chat_with_gpt(prompt):
 if __name__ == "__main__":
     print("Welcome to the Programming Problem Generator!")
     
-    # Language selection
     print("Choose your language (type 'en' for English, 'th' for Thai):")
     lang = input().strip().lower()
 
@@ -40,7 +37,6 @@ if __name__ == "__main__":
         while True:
             response = chat_with_gpt(prompt)
 
-            # Output response directly
             if lang == "th":
                 print(f"AI (Thai): {response}")
             else:
