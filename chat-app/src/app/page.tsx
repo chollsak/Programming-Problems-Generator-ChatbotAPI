@@ -66,20 +66,20 @@ export default function Home() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-8 font-sans">
-      <h1 className="text-4xl font-extralight text-center mb-8 text-black">
-        Programming Problem Generator
+    <div className="max-w-4xl mx-auto p-4 sm:p-8 font-sans">
+      <h1 className="text-3xl sm:text-4xl font-extralight text-center mb-6 sm:mb-8 text-black">
+        Programming Problem Generator by KANUT
       </h1>
 
-      <form onSubmit={handleGenerateProblem} className="bg-white shadow-lg rounded-xl p-8 space-y-6">
+      <form onSubmit={handleGenerateProblem} className="bg-white shadow-lg rounded-xl p-4 sm:p-8 space-y-6">
         {/* Language Selection */}
         <div>
-          <h3 className="text-xl font-semibold mb-4">Select Language:</h3>
-          <div className="flex space-x-4">
+          <h3 className="text-lg sm:text-xl font-semibold mb-4">Select Language:</h3>
+          <div className="flex flex-wrap gap-4">
             <button
               type="button"
               onClick={() => setLanguage('en')}
-              className={`px-6 py-3 rounded-md font-medium transition ${
+              className={`px-6 py-3 rounded-md font-medium transition w-full sm:w-auto ${
                 language === 'en'
                   ? 'bg-black text-white shadow-lg'
                   : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
@@ -90,7 +90,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setLanguage('th')}
-              className={`px-6 py-3 rounded-md font-medium transition ${
+              className={`px-6 py-3 rounded-md font-medium transition w-full sm:w-auto ${
                 language === 'th'
                   ? 'bg-black text-white shadow-lg'
                   : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
@@ -103,12 +103,12 @@ export default function Home() {
 
         {/* Difficulty Selection */}
         <div>
-          <h3 className="text-xl font-semibold mb-4">Select Difficulty:</h3>
-          <div className="flex space-x-4">
+          <h3 className="text-lg sm:text-xl font-semibold mb-4">Select Difficulty:</h3>
+          <div className="flex flex-wrap gap-4">
             <button
               type="button"
               onClick={() => setDifficulty('easy')}
-              className={`px-6 py-3 rounded-md font-medium transition ${
+              className={`px-6 py-3 rounded-md font-medium transition w-full sm:w-auto ${
                 difficulty === 'easy'
                   ? 'bg-black text-white shadow-lg'
                   : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
@@ -119,7 +119,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setDifficulty('medium')}
-              className={`px-6 py-3 rounded-md font-medium transition ${
+              className={`px-6 py-3 rounded-md font-medium transition w-full sm:w-auto ${
                 difficulty === 'medium'
                   ? 'bg-black text-white shadow-lg'
                   : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
@@ -130,7 +130,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setDifficulty('hard')}
-              className={`px-6 py-3 rounded-md font-medium transition ${
+              className={`px-6 py-3 rounded-md font-medium transition w-full sm:w-auto ${
                 difficulty === 'hard'
                   ? 'bg-black text-white shadow-lg'
                   : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
@@ -143,18 +143,18 @@ export default function Home() {
 
         {/* Topic Selection */}
         <div>
-          <h3 className="text-xl font-semibold mb-4">Select Topics:</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <h3 className="text-lg sm:text-xl font-semibold mb-4">Select Topics:</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {topics.map((topic) => (
               <label key={topic} className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                value={topic}
-                checked={selectedTopics.includes(topic)}
-                onChange={() => handleCheckboxChange(topic)}
-                className="h-4 w-4 accent-black text-black border-gray-300 rounded focus:ring-black"
-              />
-              <span className="text-gray-700">{topic}</span>
+                <input
+                  type="checkbox"
+                  value={topic}
+                  checked={selectedTopics.includes(topic)}
+                  onChange={() => handleCheckboxChange(topic)}
+                  className="h-4 w-4 accent-black text-black border-gray-300 rounded focus:ring-black"
+                />
+                <span className="text-gray-700">{topic}</span>
               </label>
             ))}
           </div>
@@ -184,7 +184,7 @@ export default function Home() {
       {/* Response Section */}
       {!loading && response && (
         <div className="mt-8 bg-white p-6 rounded-lg shadow-md space-y-4">
-          <h3 className="text-xl font-semibold mb-4">Generated Problem:</h3>
+          <h3 className="text-lg sm:text-xl font-semibold mb-4">Generated Problem:</h3>
           <pre className="bg-white p-4 border-2 rounded-md shadow-inner text-sm overflow-auto">{response}</pre>
           <button
             onClick={() => fetchProblem(true)} // Fetch another problem
