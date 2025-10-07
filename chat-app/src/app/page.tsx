@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import {
   Button,
   Container,
@@ -16,16 +16,24 @@ import {
   Paper,
   useTheme,
   ButtonProps,
-  IconButton,
-  Theme,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
+import dynamic from 'next/dynamic';
+import { EditorState, convertToRaw, ContentState, convertFromHTML, Modifier, AtomicBlockUtils } from 'draft-js';
+import draftToHtml from 'draftjs-to-html';
+import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
+import 'katex/dist/katex.min.css';
 
-import FormatBoldIcon from '@mui/icons-material/FormatBold';
-import FormatItalicIcon from '@mui/icons-material/FormatItalic';
-import CodeIcon from '@mui/icons-material/Code';
-import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
-import LinkIcon from '@mui/icons-material/Link';
+const Editor = dynamic(
+  () => import('react-draft-wysiwyg').then((mod) => mod.Editor),
+  { ssr: false }
+);
+
+// Import KaTeX dynamically
+let katex: any = null;
+if (typeof window !== 'undefined') {
+  katex = require('katex');
+}
 
 const KEYWORD_COLOR = '#FF79C6';
 const STRING_COLOR = '#F1FA8C';
@@ -108,33 +116,6 @@ const SelectionButton = styled(Button, {
   }),
 }));
 
-interface MarkdownToolbarProps { theme: Theme; }
-
-const MarkdownToolbar: React.FC<MarkdownToolbarProps> = ({ theme }) => (
-    <Box sx={{ 
-        display: 'flex', 
-        p: 1, 
-        borderBottom: `1px solid ${theme.palette.grey[300]}`,
-        bgcolor: theme.palette.grey[50] 
-    }}>
-        <IconButton size="small" title="Bold">
-            <FormatBoldIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" title="Italic">
-            <FormatItalicIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" title="Code Block">
-            <CodeIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" title="Unordered List">
-            <FormatListBulletedIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" title="Link">
-            <LinkIcon fontSize="small" />
-        </IconButton>
-    </Box>
-);
-
 interface CodeEditorProps {
   code: string;
   language: string; 
@@ -154,10 +135,8 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ code, onChange, rows }) => {
   const codeLineHeight = '1.45'; 
   const textareaPaddingTopOffset = '15px'; 
 
-
   return (
     <Box sx={{ position: 'relative' }}>
-      
       <Box
         sx={{
           margin: 0,
@@ -191,7 +170,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ code, onChange, rows }) => {
           }}
         >
           {Array(lineCount > rows ? lineCount : rows).fill(0).map((_, i) => (
-            <div key={i} style={{ paddingBottom: i < lineCount - 1 ? '0' : '0' }}>{i + 1}</div>
+            <div key={i}>{i + 1}</div>
           ))}
         </Box>
 
@@ -261,9 +240,9 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ code, onChange, rows }) => {
   );
 };
 
-
 export default function Home() {
   const theme = useTheme();
+  const [mounted, setMounted] = useState(false);
   
   const [problemLanguage, setProblemLanguage] = useState<'en' | 'th'>('en');
   const [programLanguage, setProgramLanguage] = useState<'C' | 'Python'>('Python');
@@ -276,6 +255,33 @@ export default function Home() {
   const [savedDescription, setSavedDescription] = useState('');
   const [savedSourceCode, setSavedSourceCode] = useState('');
   const [isSaved, setIsSaved] = useState(false);
+
+  const [editorState, setEditorState] = useState<EditorState>(
+    EditorState.createEmpty()
+  );
+  
+  const [showMathModal, setShowMathModal] = useState(false);
+  const [mathInput, setMathInput] = useState('');
+  const [mathPreview, setMathPreview] = useState('');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  // Update math preview
+  useEffect(() => {
+    if (mathInput && katex) {
+      try {
+        const html = katex.renderToString(mathInput, {
+          throwOnError: false,
+          displayMode: true,
+        });
+        setMathPreview(html);
+      } catch (error) {
+        setMathPreview('Invalid LaTeX syntax');
+      }
+    }
+  }, [mathInput]);
 
   const MOCK_PROBLEM_NAME = 'Unnamed Exercise';
   const MOCK_DESCRIPTION = `The generated response did not follow the expected format (Problem Name:, Description:, Example Source Code:). Please try again or refine the API response logic.`;
@@ -346,7 +352,6 @@ print(calculate_sum(5, 10))
     }
   };
 
-
   const handleGenerateProblem = (e: FormEvent) => {
     e.preventDefault();
     fetchProblem();
@@ -372,7 +377,6 @@ print(calculate_sum(5, 10))
         description = rawDescription;
         
         let rawSourceCode = rawResponse.substring(sourceCodeStart + sourceCodeMarker.length).trim();
-        
         sourceCode = rawSourceCode.replace(/```[a-z]*\n|```/gi, '').trim();
     } 
     else {
@@ -380,17 +384,179 @@ print(calculate_sum(5, 10))
         sourceCode = MOCK_SOURCE_CODE;
     }
 
-    setSavedDescription(description);
+    // Convert LaTeX math formulas to rendered HTML
+    let htmlDescription = description.replace(/\n/g, '<br/>');
+    
+    if (katex) {
+      // Replace \[...\] (display math) with rendered KaTeX
+      htmlDescription = htmlDescription.replace(/\\\[([\s\S]*?)\\\]/g, (match, latex) => {
+        try {
+          return katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: true,
+          });
+        } catch (e) {
+          return match;
+        }
+      });
+      
+      // Replace \(...\) (inline math) with rendered KaTeX
+      htmlDescription = htmlDescription.replace(/\\\(([\s\S]*?)\\\)/g, (match, latex) => {
+        try {
+          return katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: false,
+          });
+        } catch (e) {
+          return match;
+        }
+      });
+      
+      // Also support $...$ for inline math
+      htmlDescription = htmlDescription.replace(/\$([^\$]+)\$/g, (match, latex) => {
+        try {
+          return katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: false,
+          });
+        } catch (e) {
+          return match;
+        }
+      });
+      
+      // Support $...$ for display math
+      htmlDescription = htmlDescription.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
+        try {
+          return katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: true,
+          });
+        } catch (e) {
+          return match;
+        }
+      });
+    }
+    
+    const blocksFromHTML = convertFromHTML(htmlDescription);
+    const contentState = ContentState.createFromBlockArray(
+      blocksFromHTML.contentBlocks,
+      blocksFromHTML.entityMap
+    );
+    setEditorState(EditorState.createWithContent(contentState));
+    setSavedDescription(htmlDescription);
     setSavedSourceCode(sourceCode);
     setIsSaved(true);
     
-    document.getElementById('saved-exercise-preview')?.scrollIntoView({ behavior: 'smooth' });
+    setTimeout(() => {
+      document.getElementById('saved-exercise-preview')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
-
 
   const handleSaveProblem = () => {
     if (!generatedResponse || generatedResponse.startsWith('Error:')) return;
     parseAndSetProblem(generatedResponse);
+  };
+
+  const onEditorStateChange = (newEditorState: EditorState) => {
+    setEditorState(newEditorState);
+    let html = draftToHtml(convertToRaw(newEditorState.getCurrentContent()));
+    
+    // Auto-convert LaTeX patterns in the editor content
+    if (katex) {
+      // Replace \[...\] with rendered math
+      html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, latex) => {
+        try {
+          return `<div class="math-display">${katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: true,
+          })}</div>`;
+        } catch (e) {
+          return match;
+        }
+      });
+      
+      // Replace \(...\) with rendered math
+      html = html.replace(/\\\(([\s\S]*?)\\\)/g, (match, latex) => {
+        try {
+          return `<span class="math-inline">${katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: false,
+          })}</span>`;
+        } catch (e) {
+          return match;
+        }
+      });
+      
+      // Replace $...$ with rendered math (inline)
+      html = html.replace(/\$([^\$\n]+)\$/g, (match, latex) => {
+        try {
+          return `<span class="math-inline">${katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: false,
+          })}</span>`;
+        } catch (e) {
+          return match;
+        }
+      });
+      
+      // Replace $...$ with rendered math (display)
+      html = html.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
+        try {
+          return `<div class="math-display">${katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: true,
+          })}</div>`;
+        } catch (e) {
+          return match;
+        }
+      });
+    }
+    
+    setSavedDescription(html);
+  };
+  
+  const insertMathFormula = () => {
+    if (!mathInput || !katex) return;
+    
+    try {
+      const html = katex.renderToString(mathInput, {
+        throwOnError: false,
+        displayMode: true,
+      });
+      
+      const contentState = editorState.getCurrentContent();
+      const selection = editorState.getSelection();
+      
+      // Insert the LaTeX formula as HTML
+      const mathHtml = `<span class="math-formula" data-latex="${mathInput.replace(/"/g, '&quot;')}">${html}</span>`;
+      
+      const newContentState = Modifier.insertText(
+        contentState,
+        selection,
+        `[MATH]${mathInput}[/MATH]`,
+      );
+      
+      const newEditorState = EditorState.push(
+        editorState,
+        newContentState,
+        'insert-characters'
+      );
+      
+      setEditorState(newEditorState);
+      
+      // Update the saved description with proper math rendering
+      const rawContent = convertToRaw(newContentState);
+      const htmlContent = draftToHtml(rawContent);
+      setSavedDescription(htmlContent.replace(/\[MATH\](.*?)\[\/MATH\]/g, (match, latex) => {
+        return `<span class="math-formula" data-latex="${latex.replace(/"/g, '&quot;')}">${katex.renderToString(latex, { throwOnError: false, displayMode: true })}</span>`;
+      }));
+      
+      setShowMathModal(false);
+      setMathInput('');
+      setMathPreview('');
+    } catch (error) {
+      console.error('Error inserting math formula:', error);
+    }
   };
   
   const ExerciseActions = () => (
@@ -427,7 +593,7 @@ print(calculate_sum(5, 10))
         gutterBottom
         sx={{ color: 'text.primary', mb: 4 }}
       >
-        <span role="img" aria-label="lightbulb">💡</span> Generate Problem by KANUT
+        Generate Problem
       </Typography>
 
       <Paper elevation={6} sx={{ p: { xs: 3, sm: 5 }, borderRadius: 3, mb: 4 }}>
@@ -595,31 +761,188 @@ print(calculate_sum(5, 10))
                 <Typography variant="h6" fontWeight="semibold" gutterBottom>
                     Description
                 </Typography>
-                <Box sx={{ border: `1px solid ${theme.palette.grey[300]}`, borderRadius: 1, overflow: 'hidden' }}>
-                    
-                    <MarkdownToolbar theme={theme} />
-                    
-                    <TextField
-                        fullWidth
-                        multiline
-                        rows={10}
-                        value={savedDescription}
-                        onChange={(e) => setSavedDescription(e.target.value)}
-                        variant="standard"
-                        placeholder="Description text, test cases, and outputs..."
-                        InputProps={{
-                            style: { fontFamily: 'monospace' }
+                {mounted ? (
+                  <>
+                    <Box sx={{ 
+                      border: `1px solid ${theme.palette.grey[300]}`, 
+                      borderRadius: 1, 
+                      overflow: 'hidden',
+                      '& .rdw-editor-wrapper': {
+                        bgcolor: 'white',
+                      },
+                      '& .rdw-editor-toolbar': {
+                        bgcolor: theme.palette.grey[50],
+                        borderBottom: `1px solid ${theme.palette.grey[300]}`,
+                        borderTop: 'none',
+                        borderLeft: 'none',
+                        borderRight: 'none',
+                        marginBottom: 0,
+                      },
+                      '& .rdw-editor-main': {
+                        minHeight: '300px',
+                        padding: '12px',
+                        fontFamily: 'inherit',
+                        fontSize: '14px',
+                      },
+                      '& .public-DraftStyleDefault-block': {
+                        margin: '0.5em 0',
+                      },
+                      '& .math-formula': {
+                        display: 'inline-block',
+                        padding: '4px 8px',
+                        margin: '4px 2px',
+                        backgroundColor: '#f5f5f5',
+                        borderRadius: '4px',
+                        border: '1px solid #e0e0e0',
+                      },
+                      '& .math-display': {
+                        display: 'block',
+                        margin: '1em 0',
+                        textAlign: 'center',
+                        overflowX: 'auto',
+                        padding: '0.5em',
+                      },
+                      '& .math-inline': {
+                        display: 'inline',
+                        padding: '0 2px',
+                      },
+                      '& .katex': {
+                        fontSize: '1.1em',
+                      },
+                      '& .katex-display': {
+                        margin: '1em 0',
+                      }
+                    }}>
+                      <Editor
+                        editorState={editorState}
+                        onEditorStateChange={onEditorStateChange}
+                        toolbar={{
+                          options: ['inline', 'blockType', 'list', 'link', 'image', 'history'],
+                          inline: {
+                            options: ['bold', 'italic', 'underline', 'strikethrough', 'monospace'],
+                          },
+                          blockType: {
+                            options: ['Normal', 'H1', 'H2', 'H3', 'Code', 'Blockquote'],
+                          },
+                          list: {
+                            options: ['unordered', 'ordered'],
+                          },
                         }}
+                      />
+                    </Box>
+                    
+                    <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+                      <Button 
+                        variant="outlined" 
+                        onClick={() => setShowMathModal(true)}
+                        sx={{ 
+                          borderColor: theme.palette.grey[400],
+                          color: theme.palette.grey[700],
+                          '&:hover': {
+                            borderColor: theme.palette.grey[600],
+                            backgroundColor: theme.palette.grey[50],
+                          }
+                        }}
+                      >
+                        Insert Math Formula (LaTeX)
+                      </Button>
+                      <Typography variant="caption" color="text.secondary">
+                        Or type directly: \[formula\] for display math, \(formula\) for inline math
+                      </Typography>
+                    </Box>
+
+                    {/* Math Formula Modal */}
+                    {showMathModal && (
+                      <Box
                         sx={{
-                            '& .MuiInputBase-root:before, & .MuiInputBase-root:after': {
-                                borderBottom: 'none !important',
-                            },
-                            '& .MuiInputBase-input': {
-                                padding: '12px !important',
-                            }
+                          position: 'fixed',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          zIndex: 9999,
                         }}
-                    />
-                </Box>
+                        onClick={() => setShowMathModal(false)}
+                      >
+                        <Paper
+                          sx={{ 
+                            p: 4, 
+                            minWidth: '500px',
+                            maxWidth: '700px',
+                            maxHeight: '80vh',
+                            overflow: 'auto',
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Typography variant="h6" gutterBottom>
+                            Insert Math Formula
+                          </Typography>
+                          
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            Enter your LaTeX formula below. Example: \text{"{Fahrenheit}"} = \left( \text{"{Celsius}"} \times \frac{"{9}{5}"} \right) + 32
+                          </Typography>
+
+                          <TextField
+                            fullWidth
+                            multiline
+                            rows={4}
+                            value={mathInput}
+                            onChange={(e) => setMathInput(e.target.value)}
+                            placeholder="Enter LaTeX formula..."
+                            sx={{ mb: 3, fontFamily: 'monospace' }}
+                          />
+
+                          {mathPreview && (
+                            <Box sx={{ mb: 3, p: 2, bgcolor: theme.palette.grey[50], borderRadius: 1 }}>
+                              <Typography variant="subtitle2" gutterBottom>
+                                Preview:
+                              </Typography>
+                              <Box 
+                                sx={{ 
+                                  textAlign: 'center',
+                                  '& .katex': { fontSize: '1.2em' }
+                                }}
+                                dangerouslySetInnerHTML={{ __html: mathPreview }}
+                              />
+                            </Box>
+                          )}
+
+                          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                            <Button 
+                              variant="outlined" 
+                              onClick={() => {
+                                setShowMathModal(false);
+                                setMathInput('');
+                                setMathPreview('');
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                            <Button 
+                              variant="contained"
+                              onClick={insertMathFormula}
+                              disabled={!mathInput}
+                              sx={{ 
+                                backgroundColor: 'black',
+                                '&:hover': { backgroundColor: 'grey.900' }
+                              }}
+                            >
+                              Insert
+                            </Button>
+                          </Box>
+                        </Paper>
+                      </Box>
+                    )}
+                  </>
+                ) : (
+                  <Box sx={{ p: 2, border: `1px solid ${theme.palette.grey[300]}`, borderRadius: 1 }}>
+                    <Typography>Loading editor...</Typography>
+                  </Box>
+                )}
             </Box>
 
             <Box sx={{ mb: 4 }}>
